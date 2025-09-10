@@ -1,0 +1,4 @@
+scapy
+geoip2
+flask
+requests

@@ -1,0 +1,14 @@
+# Ignore local data and log files
+firewall.log
+maplog.json
+blocked_ips.txt
+
+# Ignore downloaded databases
+GeoLite2-City.mmdb
+
+# Ignore Python-specific files
+__pycache__/
+*.pyc
+
+# Ignore environment files
+.env

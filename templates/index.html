@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firewall Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p41847c2b3d81b952a23368297b81f1c9f7a7a51d" crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .alert { color: #ef4444; font-weight: bold; }
+        #map { height: 500px; width: 100%; }
+        .log-entry { font-family: 'Courier New', Courier, monospace; }
+        .log-entry.alert { background-color: #fef2f2; border-left: 4px solid #ef4444; padding-left: 10px; }
+        .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #000; animation: spin 1s ease infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 sm:p-6">
+    <header class="flex flex-col sm:flex-row justify-between items-center bg-white p-4 sm:p-6 rounded-lg shadow-lg mb-6">
+        <h1 class="text-3xl font-extrabold text-blue-600 mb-2 sm:mb-0">Firewall Dashboard</h1>
+        <nav class="space-x-4">
+            <a href="/logout" class="text-gray-600 hover:text-blue-600 font-medium transition duration-150 ease-in-out"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <a href="/blocked_ips" class="text-gray-600 hover:text-blue-600 font-medium transition duration-150 ease-in-out"><i class="fas fa-ban"></i> Blocked IPs</a>
+            <a href="/clear_logs" class="text-gray-600 hover:text-blue-600 font-medium transition duration-150 ease-in-out"><i class="fas fa-trash-alt"></i> Clear Logs</a>
+        </nav>
+    </header>
+
+    <main class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Live Logs Panel -->
+        <div class="bg-white p-6 rounded-lg shadow-lg overflow-hidden">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Live Logs</h2>
+            <div id="log-stream" class="bg-gray-50 border border-gray-200 p-4 rounded-lg h-[400px] overflow-y-scroll text-sm">
+                <!-- Logs will be streamed here -->
+                <p class="text-gray-400">Waiting for log data...</p>
+            </div>
+        </div>
+
+        <!-- IP Activity Map Panel -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">IP Activity Map</h2>
+            <div id="map" class="rounded-lg shadow-md"></div>
+            <div id="map-loading" class="flex items-center justify-center h-[400px]">
+                <div class="spinner"></div>
+                <p class="ml-4 text-gray-500">Loading map data...</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-fbbOQd5f73E1p81uN0d4+e5tQ8C5uX+8yC+6V+6V4k=" crossorigin=""></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Live log streaming
+            // IMPORTANT: This requires the Flask application to be running and serving
+            // the page. It will fail if you open the HTML file directly.
+            const logDiv = document.getElementById("log-stream");
+            const source = new EventSource("/logs");
+            source.onmessage = function(event) {
+                const data = event.data;
+                const logEntry = document.createElement('p');
+                logEntry.textContent = data;
+                logEntry.className = 'log-entry py-1';
+                if (data.includes('[ALERT')) {
+                    logEntry.classList.add('alert');
+                }
+                logDiv.appendChild(logEntry);
+                logDiv.scrollTop = logDiv.scrollHeight;
+            };
+            source.onerror = function(e) {
+                console.error("EventSource failed:", e);
+                logDiv.innerHTML += '<p class="text-red-500">Connection to logs failed. Retrying...</p>';
+            };
+
+            // Load map and GeoIP pins
+            const mapContainer = document.getElementById('map');
+            const mapLoading = document.getElementById('map-loading');
+            
+            mapContainer.style.display = 'none';
+
+            let map = L.map('map').setView([20, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            axios.get('/mapdata')
+                .then(res => {
+                    if (res.data.error) {
+                        console.error("Error fetching map data:", res.data.error);
+                        mapLoading.innerHTML = `<p class="text-red-500">Error fetching map data.</p>`;
+                        return;
+                    }
+                    mapLoading.style.display = 'none';
+                    mapContainer.style.display = 'block';
+
+                    res.data.forEach(entry => {
+                        if (!entry.geo || entry.geo === "Unknown Location") return;
+                        
+                        // Use a more reliable geocoding service or a pre-geocoded database
+                        // For this example, we'll use a mock function to avoid repeated API calls
+                        // In a real-world scenario, you would need to handle this more carefully
+                        const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(entry.geo)}&limit=1`;
+                        fetch(geocodeUrl)
+                            .then(r => r.json())
+                            .then(loc => {
+                                if (loc.length > 0) {
+                                    let lat = loc[0].lat;
+                                    let lon = loc[0].lon;
+                                    let popup = `<b>${entry.src}</b><br>${entry.geo}<br>${entry.proto} ${entry.alert ? `<span class='alert'>[ALERT]</span>` : ''}`;
+                                    L.marker([lat, lon], {
+                                        icon: L.divIcon({
+                                            className: `custom-div-icon ${entry.alert ? 'alert-marker' : ''}`,
+                                            html: `<div class="bg-blue-500 w-3 h-3 rounded-full border border-white shadow-md ${entry.alert ? 'bg-red-500 animate-pulse' : ''}"></div>`,
+                                            iconAnchor: [6, 6]
+                                        })
+                                    }).addTo(map).bindPopup(popup);
+                                }
+                            })
+                            .catch(error => console.error("Geocoding error:", error));
+                    });
+                })
+                .catch(error => {
+                    console.error("Error loading map data:", error);
+                    mapLoading.innerHTML = `<p class="text-red-500">Error loading map data. Please check the server logs.</p>`;
+                });
+        });
+    </script>
+</body>
+</html>
