@@ -3,6 +3,10 @@ import tarfile
 import shutil
 import os
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -10,8 +14,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def download_and_extract_geoip_database():
     """Downloads and extracts the GeoLite2-City database from MaxMind."""
     maxmind_key = os.getenv("MAXMIND_KEY")
-    if not maxmind_key:
-        logging.error("MAXMIND_KEY environment variable not set. Cannot download GeoIP database.")
+    if not maxmind_key or maxmind_key == "YOUR_MAXMIND_LICENSE_KEY":
+        logging.error("MAXMIND_KEY not found or not set in .env file. Please add your MaxMind license key to the .env file.")
         return
 
     url = f"https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key={maxmind_key}&suffix=tar.gz"
@@ -41,7 +45,7 @@ def download_and_extract_geoip_database():
         # Move the database to the desired location
         db_path = "GeoLite2-City.mmdb"
         if os.path.exists(db_path):
-            shutil.move(db_path, "./GeoLite2-City.mmdb")
+            # The file is already in the correct location, no need to move
             logging.info("GeoLite2 database saved as GeoLite2-City.mmdb")
         else:
             logging.error("DB file not found after extraction.")
@@ -56,7 +60,6 @@ def download_and_extract_geoip_database():
         # Clean up downloaded and extracted files
         if os.path.exists("GeoLite2-City.tar.gz"):
             os.remove("GeoLite2-City.tar.gz")
-        # The extracted folder is no longer created, so no need to remove it
 
 if __name__ == "__main__":
     download_and_extract_geoip_database()

@@ -2,3 +2,4 @@ scapy
 geoip2
 flask
 requests
+python-dotenv
